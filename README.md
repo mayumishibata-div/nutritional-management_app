@@ -3,6 +3,6 @@
 
 ## デモ動画
 
-<video src="nutritional-management_app/docs/demo1.mp4" controls width="600"></video>
+<video src="https://github.com/mayumishibata-div/nutritional-management_app/raw/main/nutritional-management_app/docs/demo1.mp4" controls width="600"></video>
 
-<video src="nutritional-management_app/docs/demo2.mp4" controls width="600"></video>
+<video src="https://github.com/mayumishibata-div/nutritional-management_app/raw/main/nutritional-management_app/docs/demo2.mp4" controls width="600"></video>
