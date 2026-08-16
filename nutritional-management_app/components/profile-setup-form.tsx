@@ -9,14 +9,29 @@ import { Label } from "@/components/ui/label";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
+export type InitialProfile = {
+  age: number;
+  gender: "male" | "female";
+  height_cm: number;
+  weight_kg: number;
+};
+
 export function ProfileSetupForm({
+  initialProfile,
   className,
   ...props
-}: React.ComponentPropsWithoutRef<"div">) {
-  const [age, setAge] = useState("");
-  const [gender, setGender] = useState<"male" | "female" | "">("");
-  const [heightCm, setHeightCm] = useState("");
-  const [weightKg, setWeightKg] = useState("");
+}: React.ComponentPropsWithoutRef<"div"> & { initialProfile?: InitialProfile }) {
+  const isEditing = Boolean(initialProfile);
+  const [age, setAge] = useState(initialProfile ? String(initialProfile.age) : "");
+  const [gender, setGender] = useState<"male" | "female" | "">(
+    initialProfile?.gender ?? "",
+  );
+  const [heightCm, setHeightCm] = useState(
+    initialProfile ? String(initialProfile.height_cm) : "",
+  );
+  const [weightKg, setWeightKg] = useState(
+    initialProfile ? String(initialProfile.weight_kg) : "",
+  );
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
@@ -40,19 +55,28 @@ export function ProfileSetupForm({
       } = await supabase.auth.getUser();
       if (userError || !user) throw userError ?? new Error("ログイン情報を取得できませんでした");
 
-      const { error: insertError } = await supabase.from("profiles").insert({
-        id: user.id,
+      const profileValues = {
         age: Number(age),
         gender,
         height_cm: Number(heightCm),
         weight_kg: Number(weightKg),
-      });
-      if (insertError) throw insertError;
+      };
+
+      const { error: saveError } = isEditing
+        ? await supabase.from("profiles").update(profileValues).eq("id", user.id)
+        : await supabase.from("profiles").insert({ id: user.id, ...profileValues });
+      if (saveError) throw saveError;
 
       router.push("/protected");
       router.refresh();
     } catch (error: unknown) {
-      setError(error instanceof Error ? error.message : "登録に失敗しました");
+      setError(
+        error instanceof Error
+          ? error.message
+          : isEditing
+            ? "更新に失敗しました"
+            : "登録に失敗しました",
+      );
     } finally {
       setIsLoading(false);
     }
@@ -137,7 +161,7 @@ export function ProfileSetupForm({
               {error && <p className="text-sm text-red-500">{error}</p>}
 
               <Button type="submit" className="w-full" disabled={isLoading}>
-                {isLoading ? "登録中..." : "登録する"}
+                {isLoading ? "保存中..." : isEditing ? "更新する" : "登録する"}
               </Button>
             </div>
           </form>
