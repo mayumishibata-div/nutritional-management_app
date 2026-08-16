@@ -3,5 +3,6 @@
 
 ## デモ動画
 
-- [demo1.mov](nutritional-management_app/docs/demo1.mov)
-- [demo2.mov](nutritional-management_app/docs/demo2.mov)
+<video src="nutritional-management_app/docs/demo1.mp4" controls width="600"></video>
+
+<video src="nutritional-management_app/docs/demo2.mp4" controls width="600"></video>
