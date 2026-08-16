@@ -1,9 +1,25 @@
+import { Suspense } from "react";
 import { redirect } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
 import { ProfileSetupForm } from "@/components/profile-setup-form";
 
-export default async function ProfileSetupPage() {
+export default function ProfileSetupPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex-1 flex flex-col gap-6 max-w-md mx-auto w-full">
+          <h1 className="text-2xl font-bold">基本情報の登録</h1>
+          <p className="text-sm text-muted-foreground">読み込み中...</p>
+        </div>
+      }
+    >
+      <ProfileSetupContent />
+    </Suspense>
+  );
+}
+
+async function ProfileSetupContent() {
   const supabase = await createClient();
   const { data: authData, error: authError } = await supabase.auth.getClaims();
 

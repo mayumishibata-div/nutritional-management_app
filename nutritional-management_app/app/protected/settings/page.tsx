@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
@@ -6,7 +7,22 @@ import { ProfileSetupForm, type InitialProfile } from "@/components/profile-setu
 import { LogoutButton } from "@/components/logout-button";
 import { Button } from "@/components/ui/button";
 
-export default async function SettingsPage() {
+export default function SettingsPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex-1 flex flex-col gap-6 max-w-md mx-auto w-full">
+          <h1 className="text-2xl font-bold">設定</h1>
+          <p className="text-sm text-muted-foreground">読み込み中...</p>
+        </div>
+      }
+    >
+      <SettingsContent />
+    </Suspense>
+  );
+}
+
+async function SettingsContent() {
   const supabase = await createClient();
   const { data: authData, error: authError } = await supabase.auth.getClaims();
 

@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
@@ -14,7 +15,22 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 
-export default async function ProtectedPage() {
+export default function ProtectedPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex-1 w-full flex flex-col gap-8">
+          <h1 className="text-2xl font-bold">今日の記録</h1>
+          <p className="text-sm text-muted-foreground">読み込み中...</p>
+        </div>
+      }
+    >
+      <ProtectedContent />
+    </Suspense>
+  );
+}
+
+async function ProtectedContent() {
   const supabase = await createClient();
   const { data: authData, error: authError } = await supabase.auth.getClaims();
 

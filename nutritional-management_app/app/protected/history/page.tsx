@@ -1,3 +1,4 @@
+import { Suspense } from 'react';
 import { connection } from 'next/server';
 import Link from "next/link";
 import { redirect } from "next/navigation";
@@ -15,7 +16,26 @@ import { Card, CardContent } from "@/components/ui/card";
 const PERIOD_OPTIONS = [7, 14, 30] as const;
 type Period = (typeof PERIOD_OPTIONS)[number];
 
-export default async function HistoryPage({
+export default function HistoryPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ days?: string }>;
+}) {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex-1 w-full flex flex-col gap-8">
+          <h1 className="text-2xl font-bold">履歴・グラフ</h1>
+          <p className="text-sm text-muted-foreground">読み込み中...</p>
+        </div>
+      }
+    >
+      <HistoryContent searchParams={searchParams} />
+    </Suspense>
+  );
+}
+
+async function HistoryContent({
   searchParams,
 }: {
   searchParams: Promise<{ days?: string }>;

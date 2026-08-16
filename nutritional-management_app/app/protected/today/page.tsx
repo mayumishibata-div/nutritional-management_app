@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
@@ -22,7 +23,26 @@ function statusToBadgeVariant(status: Status) {
   return "outline" as const;
 }
 
-export default async function TodayResultPage({
+export default function TodayResultPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ date?: string }>;
+}) {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex-1 w-full flex flex-col gap-8">
+          <h1 className="text-2xl font-bold">今日の結果</h1>
+          <p className="text-sm text-muted-foreground">読み込み中...</p>
+        </div>
+      }
+    >
+      <TodayResultContent searchParams={searchParams} />
+    </Suspense>
+  );
+}
+
+async function TodayResultContent({
   searchParams,
 }: {
   searchParams: Promise<{ date?: string }>;
