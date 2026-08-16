@@ -1,7 +1,10 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
-import { MealInputForm } from "@/components/meal-input-form";
+import { fetchMealRecords, getTodayInJst } from "@/lib/meal-records";
+import { MealManager } from "@/components/meal-manager";
+import { Button } from "@/components/ui/button";
 
 export default async function NewMealPage() {
   const supabase = await createClient();
@@ -11,22 +14,30 @@ export default async function NewMealPage() {
     redirect("/auth/login");
   }
 
+  const userId = authData.claims.sub;
+
   const { data: profile } = await supabase
     .from("profiles")
     .select("id")
-    .eq("id", authData.claims.sub)
+    .eq("id", userId)
     .maybeSingle();
 
   if (!profile) {
     redirect("/protected/profile/setup");
   }
 
+  const today = getTodayInJst();
+  const records = await fetchMealRecords(supabase, userId, today);
+
   return (
     <div className="flex-1 flex flex-col gap-6 max-w-md mx-auto w-full">
       <div>
         <h1 className="text-2xl font-bold">食事を記録する</h1>
       </div>
-      <MealInputForm />
+      <MealManager initialRecords={records} />
+      <Button asChild variant="outline" className="w-full">
+        <Link href="/protected">ホームに戻る</Link>
+      </Button>
     </div>
   );
 }

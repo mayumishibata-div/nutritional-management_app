@@ -6,8 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 const MEAL_TYPES = [
   { value: "breakfast", label: "朝食" },
@@ -16,11 +15,19 @@ const MEAL_TYPES = [
   { value: "snack", label: "間食" },
 ] as const;
 
-type FoodCandidate = { id: number; name: string };
+export type FoodCandidate = { id: number; name: string };
 type SegmentMatch = {
   segment: string;
   candidates: FoodCandidate[];
   selectedFoodId: number | "";
+};
+
+export type EditingMeal = {
+  id: string;
+  mealType: string;
+  mode: "free_text" | "list_selection";
+  freeText: string;
+  selectedFoods: FoodCandidate[];
 };
 
 function splitFreeText(text: string): string[] {
@@ -30,14 +37,21 @@ function splitFreeText(text: string): string[] {
     .filter((s) => s.length > 0);
 }
 
-export function MealInputForm() {
+export function MealInputForm({
+  editing,
+  onSaved,
+  onCancelEdit,
+}: {
+  editing: EditingMeal | null;
+  onSaved: () => void;
+  onCancelEdit: () => void;
+}) {
   const [mealType, setMealType] = useState<string>("");
   const [mode, setMode] = useState<"free_text" | "list_selection">(
     "free_text",
   );
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const router = useRouter();
 
   // 自由文章入力モード
   const [freeText, setFreeText] = useState("");
@@ -51,6 +65,31 @@ export function MealInputForm() {
   const [searchResults, setSearchResults] = useState<FoodCandidate[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [selectedFoods, setSelectedFoods] = useState<FoodCandidate[]>([]);
+
+  const resetFields = () => {
+    setMealType("");
+    setMode("free_text");
+    setFreeText("");
+    setSegmentMatches(null);
+    setSearchQuery("");
+    setSearchResults([]);
+    setSelectedFoods([]);
+  };
+
+  useEffect(() => {
+    setError(null);
+    if (editing) {
+      setMealType(editing.mealType);
+      setMode(editing.mode);
+      setFreeText(editing.freeText);
+      setSegmentMatches(null);
+      setSearchQuery("");
+      setSearchResults([]);
+      setSelectedFoods(editing.selectedFoods);
+    } else {
+      resetFields();
+    }
+  }, [editing]);
 
   const handleCheckCandidates = async () => {
     setError(null);
@@ -134,22 +173,26 @@ export function MealInputForm() {
     const itemsToSave: { foodId: number; matchedText: string | null }[] = [];
 
     if (mode === "free_text") {
-      if (!segmentMatches) {
+      if (!segmentMatches && !editing) {
         setError("先に「候補を確認」を押してください");
         return;
       }
-      for (const match of segmentMatches) {
-        if (match.selectedFoodId !== "") {
-          itemsToSave.push({
-            foodId: match.selectedFoodId,
-            matchedText: match.segment,
-          });
+      if (segmentMatches) {
+        for (const match of segmentMatches) {
+          if (match.selectedFoodId !== "") {
+            itemsToSave.push({
+              foodId: match.selectedFoodId,
+              matchedText: match.segment,
+            });
+          }
+        }
+      } else if (editing) {
+        // 編集時に自由文章を変更していない場合は、既存の選択済み食品をそのまま引き継ぐ
+        for (const food of selectedFoods) {
+          itemsToSave.push({ foodId: food.id, matchedText: null });
         }
       }
-      if (itemsToSave.length === 0) {
-        setError("食品が1つも選択されていません");
-        return;
-      }
+      // マッチする食品が1つも無くても、入力した文章自体は記録として保存する
     } else {
       if (selectedFoods.length === 0) {
         setError("食品を1つ以上選択してください");
@@ -173,30 +216,55 @@ export function MealInputForm() {
         timeZone: "Asia/Tokyo",
       }).format(new Date());
 
-      const { data: mealRecord, error: mealRecordError } = await supabase
-        .from("meal_records")
-        .insert({
-          user_id: user.id,
-          recorded_date: today,
-          meal_type: mealType,
-          input_type: mode,
-          free_text: mode === "free_text" ? freeText : null,
-        })
-        .select("id")
-        .single();
-      if (mealRecordError || !mealRecord) throw mealRecordError ?? new Error("食事記録の保存に失敗しました");
+      let mealRecordId: string;
 
-      const { error: itemsError } = await supabase.from("meal_record_items").insert(
-        itemsToSave.map((item) => ({
-          meal_record_id: mealRecord.id,
-          food_id: item.foodId,
-          matched_text: item.matchedText,
-        })),
-      );
-      if (itemsError) throw itemsError;
+      if (editing) {
+        const { error: updateError } = await supabase
+          .from("meal_records")
+          .update({
+            meal_type: mealType,
+            input_type: mode,
+            free_text: mode === "free_text" ? freeText : null,
+          })
+          .eq("id", editing.id);
+        if (updateError) throw updateError;
 
-      router.push("/protected");
-      router.refresh();
+        const { error: deleteItemsError } = await supabase
+          .from("meal_record_items")
+          .delete()
+          .eq("meal_record_id", editing.id);
+        if (deleteItemsError) throw deleteItemsError;
+
+        mealRecordId = editing.id;
+      } else {
+        const { data: mealRecord, error: mealRecordError } = await supabase
+          .from("meal_records")
+          .insert({
+            user_id: user.id,
+            recorded_date: today,
+            meal_type: mealType,
+            input_type: mode,
+            free_text: mode === "free_text" ? freeText : null,
+          })
+          .select("id")
+          .single();
+        if (mealRecordError || !mealRecord) throw mealRecordError ?? new Error("食事記録の保存に失敗しました");
+        mealRecordId = mealRecord.id;
+      }
+
+      if (itemsToSave.length > 0) {
+        const { error: itemsError } = await supabase.from("meal_record_items").insert(
+          itemsToSave.map((item) => ({
+            meal_record_id: mealRecordId,
+            food_id: item.foodId,
+            matched_text: item.matchedText,
+          })),
+        );
+        if (itemsError) throw itemsError;
+      }
+
+      resetFields();
+      onSaved();
     } catch (error: unknown) {
       setError(error instanceof Error ? error.message : "保存に失敗しました");
     } finally {
@@ -208,6 +276,19 @@ export function MealInputForm() {
     <div className="flex flex-col gap-6">
       <Card>
         <CardContent className="pt-6 flex flex-col gap-6">
+          {editing && (
+            <div className="flex items-center justify-between text-sm bg-accent rounded-md px-3 py-2">
+              <span>記録を編集中です</span>
+              <button
+                type="button"
+                className="underline underline-offset-4"
+                onClick={onCancelEdit}
+              >
+                編集をやめる
+              </button>
+            </div>
+          )}
+
           <div className="grid gap-2">
             <Label>食事区分</Label>
             <div className="flex flex-wrap gap-4">
@@ -368,7 +449,7 @@ export function MealInputForm() {
           {error && <p className="text-sm text-red-500">{error}</p>}
 
           <Button type="button" className="w-full" onClick={handleSave} disabled={isLoading}>
-            {isLoading ? "保存中..." : "保存する"}
+            {isLoading ? "保存中..." : editing ? "更新する" : "保存する"}
           </Button>
         </CardContent>
       </Card>

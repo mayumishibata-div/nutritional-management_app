@@ -2,31 +2,17 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
+import {
+  MEAL_TYPE_LABEL,
+  MEAL_TYPE_ORDER,
+  describeMeal,
+  fetchMealRecords,
+  getTodayInJst,
+  groupByMealType,
+} from "@/lib/meal-records";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-
-const MEAL_TYPE_ORDER = ["breakfast", "lunch", "dinner", "snack"] as const;
-const MEAL_TYPE_LABEL: Record<(typeof MEAL_TYPE_ORDER)[number], string> = {
-  breakfast: "朝食",
-  lunch: "昼食",
-  dinner: "夕食",
-  snack: "間食",
-};
-
-type MealRecord = {
-  id: string;
-  meal_type: string;
-  free_text: string | null;
-  input_type: string;
-  meal_record_items: { foods: { name: string }[] | null }[];
-};
-
-function getTodayInJst() {
-  return new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Tokyo" }).format(
-    new Date(),
-  );
-}
 
 export default async function ProtectedPage() {
   const supabase = await createClient();
@@ -49,33 +35,8 @@ export default async function ProtectedPage() {
   }
 
   const today = getTodayInJst();
-
-  const { data: mealRecords } = await supabase
-    .from("meal_records")
-    .select(
-      "id, meal_type, free_text, input_type, meal_record_items(foods(name))",
-    )
-    .eq("user_id", userId)
-    .eq("recorded_date", today)
-    .order("created_at");
-
-  const records = (mealRecords ?? []) as MealRecord[];
-  const recordsByMealType = new Map<string, MealRecord[]>();
-  for (const record of records) {
-    const list = recordsByMealType.get(record.meal_type) ?? [];
-    list.push(record);
-    recordsByMealType.set(record.meal_type, list);
-  }
-
-  function describeMeal(record: MealRecord) {
-    const foodNames = record.meal_record_items
-      .flatMap((item) => item.foods ?? [])
-      .map((food) => food.name);
-
-    if (foodNames.length > 0) return foodNames.join("、");
-    if (record.free_text) return record.free_text;
-    return "内容未登録";
-  }
+  const records = await fetchMealRecords(supabase, userId, today);
+  const recordsByMealType = groupByMealType(records);
 
   return (
     <div className="flex-1 w-full flex flex-col gap-8">
