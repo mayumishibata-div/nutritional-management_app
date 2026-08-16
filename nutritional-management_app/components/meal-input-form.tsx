@@ -2,6 +2,7 @@
 
 import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
+import { toArray } from "@/lib/meal-records";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -32,16 +33,18 @@ export type EditingMeal = {
 
 function splitFreeText(text: string): string[] {
   return text
-    .split(/[、,，\n]/)
+    .split(/[、,，\n\s]+/)
     .map((s) => s.trim())
     .filter((s) => s.length > 0);
 }
 
 export function MealInputForm({
+  recordedDate,
   editing,
   onSaved,
   onCancelEdit,
 }: {
+  recordedDate: string;
   editing: EditingMeal | null;
   onSaved: () => void;
   onCancelEdit: () => void;
@@ -118,8 +121,7 @@ export function MealInputForm({
           candidates.set(food.id, { id: food.id, name: food.name });
         }
         for (const alias of byAlias.data ?? []) {
-          const foods = (alias.foods ?? []) as FoodCandidate[];
-          for (const food of foods) {
+          for (const food of toArray(alias.foods as FoodCandidate | FoodCandidate[] | null)) {
             candidates.set(food.id, { id: food.id, name: food.name });
           }
         }
@@ -171,6 +173,7 @@ export function MealInputForm({
     }
 
     const itemsToSave: { foodId: number; matchedText: string | null }[] = [];
+    let freeTextToSave = freeText;
 
     if (mode === "free_text") {
       if (!segmentMatches && !editing) {
@@ -186,6 +189,14 @@ export function MealInputForm({
             });
           }
         }
+        // マッチした部分は正式名称に置き換え、マッチしなかった部分は入力のまま残す
+        freeTextToSave = segmentMatches
+          .map((match) => {
+            if (match.selectedFoodId === "") return match.segment;
+            const matched = match.candidates.find((c) => c.id === match.selectedFoodId);
+            return matched ? matched.name : match.segment;
+          })
+          .join("、");
       } else if (editing) {
         // 編集時に自由文章を変更していない場合は、既存の選択済み食品をそのまま引き継ぐ
         for (const food of selectedFoods) {
@@ -212,10 +223,6 @@ export function MealInputForm({
       } = await supabase.auth.getUser();
       if (userError || !user) throw userError ?? new Error("ログイン情報を取得できませんでした");
 
-      const today = new Intl.DateTimeFormat("sv-SE", {
-        timeZone: "Asia/Tokyo",
-      }).format(new Date());
-
       let mealRecordId: string;
 
       if (editing) {
@@ -224,7 +231,7 @@ export function MealInputForm({
           .update({
             meal_type: mealType,
             input_type: mode,
-            free_text: mode === "free_text" ? freeText : null,
+            free_text: mode === "free_text" ? freeTextToSave : null,
           })
           .eq("id", editing.id);
         if (updateError) throw updateError;
@@ -241,10 +248,10 @@ export function MealInputForm({
           .from("meal_records")
           .insert({
             user_id: user.id,
-            recorded_date: today,
+            recorded_date: recordedDate,
             meal_type: mealType,
             input_type: mode,
-            free_text: mode === "free_text" ? freeText : null,
+            free_text: mode === "free_text" ? freeTextToSave : null,
           })
           .select("id")
           .single();

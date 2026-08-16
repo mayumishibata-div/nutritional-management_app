@@ -13,8 +13,20 @@ export type MealRecord = {
   meal_type: string;
   input_type: string;
   free_text: string | null;
-  meal_record_items: { food_id: number; foods: { name: string }[] | null }[];
+  meal_record_items: {
+    food_id: number;
+    foods: { name: string } | { name: string }[] | null;
+  }[];
 };
+
+/**
+ * PostgRESTは多対1のリレーションを単一オブジェクトで返すことがあるため、
+ * 配列・単一オブジェクト・nullのいずれでも安全に配列として扱えるようにする。
+ */
+export function toArray<T>(value: T | T[] | null | undefined): T[] {
+  if (value == null) return [];
+  return Array.isArray(value) ? value : [value];
+}
 
 export function getTodayInJst() {
   return new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Tokyo" }).format(
@@ -22,13 +34,23 @@ export function getTodayInJst() {
   );
 }
 
+export function addDays(dateStr: string, days: number): string {
+  const [y, m, d] = dateStr.split("-").map(Number);
+  const date = new Date(Date.UTC(y, m - 1, d));
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
 export function describeMeal(record: MealRecord) {
+  // 自由文章入力は、一部の食品しかマッチしなくても入力内容が消えて見えないよう、
+  // 元の文章をそのまま優先表示する（マッチ結果の食品名だけに絞らない）
+  if (record.free_text) return record.free_text;
+
   const foodNames = record.meal_record_items
-    .flatMap((item) => item.foods ?? [])
+    .flatMap((item) => toArray(item.foods))
     .map((food) => food.name);
 
   if (foodNames.length > 0) return foodNames.join("、");
-  if (record.free_text) return record.free_text;
   return "内容未登録";
 }
 

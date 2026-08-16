@@ -6,7 +6,13 @@ import { fetchMealRecords, getTodayInJst } from "@/lib/meal-records";
 import { MealManager } from "@/components/meal-manager";
 import { Button } from "@/components/ui/button";
 
-export default async function NewMealPage() {
+export default async function NewMealPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ date?: string }>;
+}) {
+  const { date: dateParam } = await searchParams;
+
   const supabase = await createClient();
   const { data: authData, error: authError } = await supabase.auth.getClaims();
 
@@ -27,14 +33,15 @@ export default async function NewMealPage() {
   }
 
   const today = getTodayInJst();
-  const records = await fetchMealRecords(supabase, userId, today);
+  const date = dateParam && dateParam <= today ? dateParam : today;
+  const records = await fetchMealRecords(supabase, userId, date);
 
   return (
     <div className="flex-1 flex flex-col gap-6 max-w-md mx-auto w-full">
       <div>
         <h1 className="text-2xl font-bold">食事を記録する</h1>
       </div>
-      <MealManager initialRecords={records} />
+      <MealManager key={date} date={date} initialRecords={records} />
       <Button asChild variant="outline" className="w-full">
         <Link href="/protected">ホームに戻る</Link>
       </Button>

@@ -2,19 +2,13 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
-import {
-  MEAL_TYPE_LABEL,
-  MEAL_TYPE_ORDER,
-  describeMeal,
-  fetchMealRecords,
-  getTodayInJst,
-  groupByMealType,
-} from "@/lib/meal-records";
+import { fetchMealRecords, getTodayInJst } from "@/lib/meal-records";
+import { computeDailyNutrition, type Status } from "@/lib/nutrition";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-
-type Status = "deficient" | "adequate" | "excessive";
+import { NutritionTodayChart } from "@/components/nutrition-today-chart";
+import { MealManager } from "@/components/meal-manager";
 
 function statusComment(nutrientName: string, status: Status) {
   if (status === "deficient") return `${nutrientName}が不足しています`;
@@ -28,7 +22,13 @@ function statusToBadgeVariant(status: Status) {
   return "outline" as const;
 }
 
-export default async function TodayResultPage() {
+export default async function TodayResultPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ date?: string }>;
+}) {
+  const { date: dateParam } = await searchParams;
+
   const supabase = await createClient();
   const { data: authData, error: authError } = await supabase.auth.getClaims();
 
@@ -48,72 +48,10 @@ export default async function TodayResultPage() {
     redirect("/protected/profile/setup");
   }
 
-  const today = getTodayInJst();
-  const records = await fetchMealRecords(supabase, userId, today);
-  const recordsByMealType = groupByMealType(records);
+  const date = dateParam ?? getTodayInJst();
+  const records = await fetchMealRecords(supabase, userId, date);
 
-  const foodIds = Array.from(
-    new Set(records.flatMap((r) => r.meal_record_items.map((i) => i.food_id))),
-  );
-
-  const { data: nutrients } = await supabase
-    .from("nutrients")
-    .select("id, name, unit")
-    .order("id");
-
-  const { data: requirements } = await supabase
-    .from("nutrient_requirements")
-    .select("nutrient_id, recommended_amount")
-    .eq("gender", profile.gender)
-    .lte("age_min", profile.age)
-    .gte("age_max", profile.age);
-
-  const { data: foodNutrients } =
-    foodIds.length > 0
-      ? await supabase
-          .from("food_nutrients")
-          .select("nutrient_id, amount_per_100g")
-          .in("food_id", foodIds)
-      : { data: [] as { nutrient_id: number; amount_per_100g: number }[] };
-
-  const requirementByNutrient = new Map(
-    (requirements ?? []).map((r) => [r.nutrient_id, r.recommended_amount]),
-  );
-
-  const totalByNutrient = new Map<number, number>();
-  for (const fn of foodNutrients ?? []) {
-    totalByNutrient.set(
-      fn.nutrient_id,
-      (totalByNutrient.get(fn.nutrient_id) ?? 0) + fn.amount_per_100g,
-    );
-  }
-
-  const results = (nutrients ?? []).map((nutrient) => {
-    const total = totalByNutrient.get(nutrient.id) ?? 0;
-    const recommended = requirementByNutrient.get(nutrient.id);
-    let status: Status | null = null;
-    if (recommended) {
-      const ratio = total / recommended;
-      status = ratio < 0.8 ? "deficient" : ratio > 1.5 ? "excessive" : "adequate";
-    }
-    return { nutrient, total, recommended, status };
-  });
-
-  // 判定結果をキャッシュ保存（オンデマンド計算のキャッシュ）
-  const summariesToUpsert = results
-    .filter((r) => r.status !== null)
-    .map((r) => ({
-      user_id: userId,
-      date: today,
-      nutrient_id: r.nutrient.id,
-      total_amount: r.total,
-      status: r.status as Status,
-    }));
-  if (summariesToUpsert.length > 0) {
-    await supabase
-      .from("daily_nutrition_summaries")
-      .upsert(summariesToUpsert, { onConflict: "user_id,date,nutrient_id" });
-  }
+  const results = await computeDailyNutrition(supabase, userId, date, profile);
 
   const deficientNutrientIds = results
     .filter((r) => r.status === "deficient")
@@ -144,9 +82,25 @@ export default async function TodayResultPage() {
   return (
     <div className="flex-1 w-full flex flex-col gap-8">
       <div>
-        <h1 className="text-2xl font-bold">今日の結果</h1>
-        <p className="text-sm text-muted-foreground mt-1">{today}</p>
+        <h1 className="text-2xl font-bold">
+          {date === getTodayInJst() ? "今日の結果" : "その日の結果"}
+        </h1>
+        <p className="text-sm text-muted-foreground mt-1">{date}</p>
       </div>
+
+      <Card>
+        <CardContent className="pt-6">
+          <p className="text-xs text-muted-foreground mb-2">
+            各栄養素の摂取量を、推奨量に対する割合（%）で表示しています。点線が目安（100%）です。
+          </p>
+          <NutritionTodayChart
+            data={results.map((r) => ({
+              name: r.nutrient.name,
+              percent: r.recommended ? Math.round((r.total / r.recommended) * 100) : 0,
+            }))}
+          />
+        </CardContent>
+      </Card>
 
       <div className="flex flex-col gap-3">
         {results.map(({ nutrient, status }) => {
@@ -181,35 +135,16 @@ export default async function TodayResultPage() {
         })}
       </div>
 
-      <div className="flex flex-col gap-3">
-        <h2 className="text-lg font-bold">今日食べたもの</h2>
-        {records.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            まだ今日の記録がありません。
-          </p>
-        ) : (
-          MEAL_TYPE_ORDER.filter((type) => recordsByMealType.has(type)).map(
-            (type) => (
-              <Card key={type}>
-                <CardContent className="pt-6 flex flex-col gap-2">
-                  <Badge variant="secondary" className="w-fit">
-                    {MEAL_TYPE_LABEL[type]}
-                  </Badge>
-                  <ul className="text-sm flex flex-col gap-1">
-                    {recordsByMealType.get(type)!.map((record) => (
-                      <li key={record.id}>{describeMeal(record)}</li>
-                    ))}
-                  </ul>
-                </CardContent>
-              </Card>
-            ),
-          )
-        )}
-      </div>
+      <MealManager key={date} date={date} initialRecords={records} />
 
-      <Button asChild variant="outline" className="w-full">
-        <Link href="/protected">ホームに戻る</Link>
-      </Button>
+      <div className="flex gap-2">
+        <Button asChild variant="outline" className="flex-1">
+          <Link href="/protected">ホームに戻る</Link>
+        </Button>
+        <Button asChild variant="outline" className="flex-1">
+          <Link href="/protected/history">履歴・グラフ</Link>
+        </Button>
+      </div>
     </div>
   );
 }
