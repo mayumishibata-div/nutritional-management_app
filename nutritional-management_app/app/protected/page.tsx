@@ -16,7 +16,24 @@ async function UserDetails() {
   return JSON.stringify(data.claims, null, 2);
 }
 
-export default function ProtectedPage() {
+export default async function ProtectedPage() {
+  const supabase = await createClient();
+  const { data: authData, error: authError } = await supabase.auth.getClaims();
+
+  if (authError || !authData?.claims) {
+    redirect("/auth/login");
+  }
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("id")
+    .eq("id", authData.claims.sub)
+    .maybeSingle();
+
+  if (!profile) {
+    redirect("/protected/profile/setup");
+  }
+
   return (
     <div className="flex-1 w-full flex flex-col gap-12">
       <div className="w-full">
