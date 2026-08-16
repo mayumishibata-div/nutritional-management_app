@@ -1,5 +1,4 @@
-export const dynamic = 'force-dynamic'
-
+import { connection } from 'next/server';
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
@@ -21,6 +20,7 @@ export default async function HistoryPage({
 }: {
   searchParams: Promise<{ days?: string }>;
 }) {
+  await connection();
   const { days: daysParam } = await searchParams;
   const parsedDays = Number(daysParam);
   const days: Period = PERIOD_OPTIONS.includes(parsedDays as Period)
