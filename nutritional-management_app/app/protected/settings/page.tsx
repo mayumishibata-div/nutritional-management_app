@@ -32,7 +32,7 @@ async function SettingsContent() {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("age, gender, height_cm, weight_kg")
+    .select("display_name, age, gender, height_cm, weight_kg")
     .eq("id", authData.claims.sub)
     .maybeSingle();
 

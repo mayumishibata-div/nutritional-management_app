@@ -11,9 +11,19 @@ export async function AuthButton() {
 
   const user = data?.claims;
 
+  let displayName: string | null = null;
+  if (user) {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("display_name")
+      .eq("id", user.sub)
+      .maybeSingle();
+    displayName = profile?.display_name ?? null;
+  }
+
   return user ? (
     <div className="flex items-center gap-4">
-      Hey, {user.email}!
+      {displayName ? `${displayName}さん` : `Hey, ${user.email}!`}
       <LogoutButton />
     </div>
   ) : (

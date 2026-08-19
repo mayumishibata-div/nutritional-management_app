@@ -42,7 +42,7 @@ async function ProtectedContent() {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("id")
+    .select("id, display_name")
     .eq("id", userId)
     .maybeSingle();
 
@@ -53,11 +53,14 @@ async function ProtectedContent() {
   const today = getTodayInJst();
   const records = await fetchMealRecords(supabase, userId, today);
   const recordsByMealType = groupByMealType(records);
+  const title = profile.display_name
+    ? `${profile.display_name}さんの今日の記録`
+    : "今日の記録";
 
   return (
     <div className="flex-1 w-full flex flex-col gap-8">
       <div>
-        <h1 className="text-2xl font-bold">今日の記録</h1>
+        <h1 className="text-2xl font-bold">{title}</h1>
         <p className="text-sm text-muted-foreground mt-1">{today}</p>
       </div>
 

@@ -10,6 +10,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 export type InitialProfile = {
+  display_name: string | null;
   age: number;
   gender: "male" | "female";
   height_cm: number;
@@ -22,6 +23,9 @@ export function ProfileSetupForm({
   ...props
 }: React.ComponentPropsWithoutRef<"div"> & { initialProfile?: InitialProfile }) {
   const isEditing = Boolean(initialProfile);
+  const [displayName, setDisplayName] = useState(
+    initialProfile?.display_name ?? "",
+  );
   const [age, setAge] = useState(initialProfile ? String(initialProfile.age) : "");
   const [gender, setGender] = useState<"male" | "female" | "">(
     initialProfile?.gender ?? "",
@@ -40,6 +44,11 @@ export function ProfileSetupForm({
     e.preventDefault();
     setError(null);
 
+    if (!displayName.trim()) {
+      setError("お名前（またはニックネーム）を入力してください");
+      return;
+    }
+
     if (!gender) {
       setError("性別を選択してください");
       return;
@@ -56,6 +65,7 @@ export function ProfileSetupForm({
       if (userError || !user) throw userError ?? new Error("ログイン情報を取得できませんでした");
 
       const profileValues = {
+        display_name: displayName.trim(),
         age: Number(age),
         gender,
         height_cm: Number(heightCm),
@@ -88,6 +98,18 @@ export function ProfileSetupForm({
         <CardContent className="pt-6">
           <form onSubmit={handleSubmit}>
             <div className="flex flex-col gap-6">
+              <div className="grid gap-2">
+                <Label htmlFor="displayName">お名前（またはニックネーム）</Label>
+                <Input
+                  id="displayName"
+                  type="text"
+                  maxLength={20}
+                  required
+                  value={displayName}
+                  onChange={(e) => setDisplayName(e.target.value)}
+                />
+              </div>
+
               <div className="grid gap-2">
                 <Label htmlFor="age">年齢</Label>
                 <Input
