@@ -43,12 +43,10 @@ export function SignUpForm({
       const { error } = await supabase.auth.signUp({
         email,
         password,
-        options: {
-          emailRedirectTo: `${window.location.origin}/protected`,
-        },
       });
       if (error) throw error;
-      router.push("/auth/sign-up-success");
+      // メール確認が無効化されているため、登録と同時にセッションが確立される。
+      router.push("/protected");
     } catch (error: unknown) {
       setError(error instanceof Error ? error.message : "エラーが発生しました");
     } finally {
