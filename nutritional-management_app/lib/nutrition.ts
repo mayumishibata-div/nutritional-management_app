@@ -64,10 +64,8 @@ export async function computeNutritionForDates(
 
   const { data: requirements } = await supabase
     .from("nutrient_requirements")
-    .select("nutrient_id, recommended_amount")
-    .eq("gender", profile.gender)
-    .lte("age_min", profile.age)
-    .gte("age_max", profile.age);
+    .select("nutrient_id, age_min, age_max, recommended_amount")
+    .eq("gender", profile.gender);
 
   const records = (mealRecords ?? []) as {
     recorded_date: string;
@@ -102,9 +100,44 @@ export async function computeNutritionForDates(
     nutrientAmountsByFood.set(fn.food_id, list);
   }
 
-  const requirementByNutrient = new Map(
-    (requirements ?? []).map((r) => [r.nutrient_id, r.recommended_amount]),
-  );
+  // 該当する年代区分（例: 18歳未満）が未登録の場合は、
+  // 最も年齢が近い区分の推奨量をフォールバックとして採用する（安全策）。
+  const requirementsByNutrient = new Map<
+    number,
+    { age_min: number; age_max: number; recommended_amount: number }[]
+  >();
+  for (const r of requirements ?? []) {
+    const list = requirementsByNutrient.get(r.nutrient_id) ?? [];
+    list.push(r);
+    requirementsByNutrient.set(r.nutrient_id, list);
+  }
+
+  const requirementByNutrient = new Map<number, number>();
+  for (const [nutrientId, list] of requirementsByNutrient) {
+    const exact = list.find(
+      (r) => profile.age >= r.age_min && profile.age <= r.age_max,
+    );
+    if (exact) {
+      requirementByNutrient.set(nutrientId, exact.recommended_amount);
+      continue;
+    }
+
+    let nearest = list[0];
+    let nearestDistance = Infinity;
+    for (const r of list) {
+      const distance =
+        profile.age < r.age_min
+          ? r.age_min - profile.age
+          : profile.age - r.age_max;
+      if (distance < nearestDistance) {
+        nearestDistance = distance;
+        nearest = r;
+      }
+    }
+    if (nearest) {
+      requirementByNutrient.set(nutrientId, nearest.recommended_amount);
+    }
+  }
 
   const totalsByDate = new Map<string, Map<number, number>>();
   for (const record of records) {
